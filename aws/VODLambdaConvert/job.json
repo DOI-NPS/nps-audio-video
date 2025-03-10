@@ -1,0 +1,55 @@
+{
+    "OutputGroups": [
+      {
+        "Name": "File Group",
+        "Outputs": [
+          {
+            "Preset": "360p - Default Values",
+            "NameModifier": "_360p"
+          },
+          {
+            "Preset": "480p - Default Values",
+            "NameModifier": "_480p"
+          },
+          {
+            "Preset": "720p - Default Values",
+            "NameModifier": "_720p"
+          },
+          {
+            "Preset": "1080p - Default Values",
+            "NameModifier": "_1080p"
+          }
+        ],
+        "OutputGroupSettings": {
+          "Type": "FILE_GROUP_SETTINGS",
+          "FileGroupSettings": {
+            "Destination": "s3://nps-audiovideo/audiovideo/"
+          }
+        }
+      }
+    ],
+    "AdAvailOffset": 0,
+    "Inputs": [
+      {
+        "AudioSelectors": {
+          "Audio Selector 1": {
+            "Offset": 0,
+            "DefaultSelection": "DEFAULT",
+            "ProgramSelection": 1
+          }
+        },
+        "VideoSelector": {
+          "ColorSpace": "FOLLOW",
+          "Rotate": "DEGREE_0",
+          "AlphaBehavior": "DISCARD"
+        },
+        "FilterEnable": "AUTO",
+        "PsiControl": "USE_PSI",
+        "FilterStrength": 0,
+        "DeblockFilter": "DISABLED",
+        "DenoiseFilter": "DISABLED",
+        "TimecodeSource": "EMBEDDED",
+        "FileInput": "s3://nps-audiovideo-watchfolder/test_vid.m4v"
+      }
+    ]
+}
