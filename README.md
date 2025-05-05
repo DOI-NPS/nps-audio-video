@@ -159,6 +159,5 @@ SaveVideoFrame
 
 📬 Contacts
 
-- Pipeline Maintainer: Your Name Here
-- SNS Subscribers: nps_web@nps.gov, your email here
+- TBD
 
