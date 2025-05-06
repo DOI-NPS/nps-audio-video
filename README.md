@@ -1,163 +1,164 @@
-# nps-audio-video
-VideoJS and Plupload script examples for the player and upload process. MediaConvert script and AWS Lambda code for the main processing script. Documentation.
+# Audio/Video Processing Pipeline on AWS
 
-# Audio/Video AWS Processing Pipeline
+This project outlines a modular, cloud-native workflow for automating audio and video media processing using AWS services. It handles media uploads, conversion, metadata extraction, and asset preparation for public delivery.
 
-This document provides a detailed overview of the Audio/Video processing pipeline implemented using AWS services. It is designed to help engineers and developers understand, replicate, and troubleshoot the setup.
-
----
-
-📌 Overview
-
-Audio and video files uploaded via a front-end system are processed through a structured AWS pipeline. The pipeline handles metadata extraction, media transcoding, thumbnail generation, and final delivery via S3.
+> **Note:** This is a generic template. You’ll need to customize bucket names, IAM roles, CORS policies, lifecycle rules, file paths, and environment variables to match your environment and security posture.
 
 ---
 
-🛠 Upload Process
+## 🗂 Folder Structure Overview
 
-- Uploader: plupload sends media files to:
-  S3://nps-audiovideo-watchfolder/inputs
-- Trigger: Lambda function VDOLambdaConvert is automatically triggered on upload.
-
----
-
-🧩 Chunk File Detection
-
-- CHUNK files have a .CHUNK# extension.
-- The Lambda waits until all chunks are merged into a single complete file.
+- `s3://<watch-bucket>/inputs/`: Incoming upload directory (watch folder)
+- `s3://<public-bucket>/`: Destination for processed media
+  - `/audiovideo/` — Transcoded media files
+  - `/closed-caption/` — VTT caption files
+  - `/json/` — Video metadata
+  - `/original/` — Raw uploaded files
+  - `/thumbnail/` — Splash images (JPG)
 
 ---
 
-🧠 Media Type & Metadata Extraction
+## 📥 Upload & Initial Trigger
 
-- Uses pymediainfo to determine:
-  - File type: audio or video
-  - Metadata: duration, resolution, etc.
-
----
-
-🎧 Audio File Handling
-
-- MP3 files are moved directly to:
-  S3://nps-audiovideo/audiovideo
+1. Files are uploaded via a web interface (e.g., using `plupload`) to the `inputs/` folder.
+2. This triggers an AWS Lambda function (e.g., `MediaLambdaHandler`).
+3. Determines file type (audio/video) and checks for multipart CHUNK uploads.
+   - CHUNK files (e.g., `.CHUNK0`, `.CHUNK1`) are ignored until fully assembled.
 
 ---
 
-🎥 Video File Handling
+## 🧠 Media Analysis
 
-1. Video metadata is analyzed.
-2. job.json for AWS MediaConvert is modified accordingly.
-3. AWS MediaConvert is triggered.
-4. Outputs:
-   - Converted files → S3://nps-audiovideo/audiovideo
-   - Original video → S3://nps-audiovideo/original
-   - Metadata JSON → S3://nps-audiovideo/json
-   - Naming: filename1080p.mp4, filename720p.mp4, etc.
+Once a complete file is detected:
+- A custom-compiled binary (e.g., `pymediainfo`) analyzes the file.
+- Extracts key metadata: media type, resolution, duration, etc.
 
 ---
 
-🖼 Thumbnail Generation
+## 🎧 Audio File Handling
 
-- Lambda SaveVideoFrame is triggered by upload to original/
-- Uses ffmpeglayer to extract a frame at 7 seconds
-- Output is saved to:
-  S3://nps-audiovideo/thumbnail
+- MP3 files are moved directly to the final media bucket (e.g., `audiovideo/`).
+- No additional processing is required.
 
 ---
 
-📣 SNS Notification
+## 🎞 Video File Conversion
 
-- On MediaConvert job completion:
-  - CloudWatch Event Rule VODNotifyEventRule triggers SNS VODNotification
-  - Notifies: system administrator & nps_web@nps.gov
-
----
-
-📝 Closed Caption Support
-
-- Files converted to VTT (if necessary)
-- Stored in:
-  S3://nps-audiovideo/closed-caption
+1. Metadata determines which resolutions to create (e.g., skip 1080p for a 720p source).
+2. A template job configuration (e.g., `job.json`) is modified in-memory.
+3. AWS MediaConvert is invoked to:
+   - Create multiple resolution variants (360p, 480p, 720p, 1080p).
+   - Append resolution to filenames (`filename_1080p.mp4`).
+   - Store the files in the designated output folder.
 
 ---
 
-🔧 Lambda Configuration
+## 🧾 Metadata & Thumbnails
 
-VDOLambdaConvert
-- Environment Variables:
-  - Application=VOD
-  - DestinationBucket=nps-audiovideo
-  - MediaConvertRole=arn:aws:iam::693476370600:role/nps_mediaconvert_role
-- Runtime: Python 3.7
-- Memory: 128MB
-- Timeout: 2 minutes
-- Triggers: S3 ObjectCreated on inputs/
-
-SaveVideoFrame
-- Runtime: Python 3.7
-- Memory: 3008MB
-- Timeout: 30 seconds
-- Trigger: Upload to original/
+- Video metadata is saved as a `.json` file with a matching name in the `/json/` folder.
+- A separate Lambda function (e.g., `SaveVideoFrame`) extracts a JPG frame (default at 7 seconds).
+- The thumbnail is saved to the `/thumbnail/` folder.
 
 ---
 
-📁 S3 Bucket Layout
+## 📝 Closed Caption Support
 
-| Bucket/Folders                | Purpose                         |
-| ----------------------------- | ------------------------------- |
-| nps-audiovideo-watchfolder/   | Upload watch folder             |
-| audiovideo/                   | Final processed media           |
-| original/                     | Original uploaded video files   |
-| thumbnail/                    | Thumbnails extracted from video |
-| json/                         | Metadata JSON files             |
-| closed-caption/               | Closed-caption VTT files        |
+- Caption files uploaded by users are converted to `.vtt` if necessary.
+- They are stored with no additional processing in `/closed-caption/`.
 
 ---
 
-🔍 Logs & Monitoring
+## 🧰 Codebase & Deployment Artifacts
 
-- CloudWatch logs available for all Lambdas.
-- Scripts use logger.info for detailed traceability.
+**Lambda Source Code**
+- `MediaLambdaHandler.py` — Main Lambda for processing uploads
+- `SaveVideoFrame.py` — Lambda for thumbnail extraction
+- `job.json` — Template for AWS MediaConvert job settings
 
----
-
-🔐 Security Notes
-
-- Upload bucket blocks public access
-- Destination bucket has CORS policy and public access for media delivery
-- Bucket policies and CORS configurations available in the aws-lambda Structured Data folder
-
----
-
-🧪 Development & Assets
-
-- Code, configs, and binaries are in /customcf/structured_data/aws-lambda/
-- Includes:
-  - VDOLambdaConvert-convert.py
-  - VDOLambdaConvert-job.json
-  - SaveVideoFrame-lambda_function.py
-  - Precompiled binaries: pymediainfo, ffmpeglayer
+**Custom Binaries**
+- `pymediainfo` and `ffmpeglayer` should be compiled and packaged as Lambda layers compatible with your Python runtime (e.g., 3.7).
+- A good starting guide:  
+  https://binx.io/blog/2017/10/20/how-to-install-python-binaries-in-aws-lambda/
 
 ---
 
-🧠 Tips & Troubleshooting
+## ⚙️ Lambda Configuration Notes
 
-| Scenario                  | Action                                      |
-| ------------------------- | ------------------------------------------- |
-| Upload fails              | Check S3 bucket permissions and lifecycle   |
-| Metadata extraction fails | Confirm pymediainfo binary compatibility    |
-| MediaConvert job fails    | Verify IAM role and modified job.json       |
-| No thumbnail created      | Ensure trigger is set on original/ folder   |
+### MediaLambdaHandler
+
+- **Environment Variables** (set per deployment):
+  - `APPLICATION_NAME`
+  - `DESTINATION_BUCKET`
+  - `MEDIACONVERT_ROLE_ARN`
+- **Basic Settings**:
+  - Runtime: Python 3.7+
+  - Memory: 128 MB
+  - Timeout: 2 minutes
+  - S3 Trigger: Event type `ObjectCreated` with prefix `inputs/`
+
+### SaveVideoFrame
+
+- **Important**: Thumbnail generation is memory-intensive.
+- **Settings**:
+  - Runtime: Python 3.7+
+  - Memory: 3008 MB
+  - Timeout: 30 seconds
+  - Trigger: Upload to `/original/` folder
 
 ---
 
-🔗 Reference
+## 📡 Monitoring & Notifications
 
-- Installing Python binaries in Lambda: https://binx.io/blog/2017/10/20/how-to-install-python-binaries-in-aws-lambda/
+- CloudWatch logs are enabled by default; all scripts use `logger.info()` for traceability.
+- An EventBridge (CloudWatch Events) rule can be set up to notify an SNS topic when MediaConvert jobs complete.
+  - Subscribers can include dev team members, automated systems, or webhooks.
 
 ---
 
-📬 Contacts
+## 🔒 Security & Access
 
-- TBD
+> ⚠️ You are responsible for defining IAM roles, policies, and bucket configurations.
+
+- **Watchfolder S3 Bucket**:
+  - Should block public access.
+  - Recommended: Lifecycle rule to delete old uploads after 24 hours.
+
+- **Public Delivery Bucket**:
+  - Should be read-accessible as needed (e.g., via CloudFront or direct links).
+  - Configure CORS policy to allow cross-origin access as necessary.
+
+---
+
+## 📌 Deployment Tips
+
+- Use Infrastructure-as-Code (e.g., CloudFormation, Terraform, CDK) to manage:
+  - Lambda functions
+  - S3 buckets and policies
+  - MediaConvert roles and permissions
+- Set up versioning on buckets if retaining media history is needed.
+- Automate unit tests for metadata validation and file integrity.
+
+---
+
+## 🧪 Testing
+
+For local testing:
+- Use a tool like [localstack](https://github.com/localstack/localstack) to mock AWS services.
+- Upload test media files to a local S3 bucket to simulate the full pipeline.
+
+---
+
+## 💬 Final Thoughts
+
+This pipeline offers a flexible blueprint for media processing in AWS. It’s scalable, customizable, and designed for clarity. Just plug in your infrastructure, tweak the knobs, and let the automation do the heavy lifting.
+
+---
+
+## 🛠 To-Do / Customization Checklist
+
+- [ ] Replace bucket names (`<watch-bucket>`, `<public-bucket>`)
+- [ ] Replace placeholder ARNs and role names
+- [ ] Configure lifecycle & CORS policies
+- [ ] Compile and upload Lambda layers (`pymediainfo`, `ffmpeglayer`)
+- [ ] Setup CloudWatch and SNS alerts for your team
 
